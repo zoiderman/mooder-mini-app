@@ -3,39 +3,44 @@
 import { Button } from "@minikit/ui";
 import { useState } from "react";
 
-const moods = [
-  { emoji: "😊", label: "Happy", genres: ["pop", "dance"] },
-  { emoji: "😢", label: "Sad", genres: ["acoustic", "blues"] },
-  { emoji: "😤", label: "Angry", genres: ["rock", "metal"] },
-  { emoji: "😎", label: "Chill", genres: ["lofi", "jazz"] },
-  { emoji: "🤯", label: "Energetic", genres: ["edm", "hip-hop"] },
+interface Mood {
+  emoji: string;
+  label: string;
+  genres: string[];
+}
+
+const moods: Mood[] = [
+  { emoji: "smiling face", label: "Happy", genres: ["pop", "dance"] },
+  { emoji: "crying face", label: "Sad", genres: ["acoustic", "blues"] },
+  { emoji: "angry face", label: "Angry", genres: ["rock", "metal"] },
+  { emoji: "sunglasses", label: "Chill", genres: ["lofi", "jazz"] },
+  { emoji: "exploding head", label: "Energetic", genres: ["edm", "hip-hop"] }
+];
+
+const questions: string[] = [
+  "How's your energy level?",
+  "What's your main emotion?",
+  "Do you want to be alone or with others?"
+];
+
+const options: string[][] = [
+  ["Low", "Medium", "High"],
+  ["Happy", "Sad", "Angry", "Calm", "Excited"],
+  ["Alone", "With friends", "Doesn't matter"]
 ];
 
 export default function Home() {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<number>(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [trackUrl, setTrackUrl] = useState("");
+  const [trackUrl, setTrackUrl] = useState<string>("");
 
-  const questions = [
-    "How's your energy level?",
-    "What's your main emotion?",
-    "Do you want to be alone or with others?",
-  ];
-
-  const options = [
-    ["Low", "Medium", "High"],
-    ["Happy", "Sad", "Angry", "Calm", "Excited"],
-    ["Alone", "With friends", "Doesn't matter"],
-  ];
-
-  const handleAnswer = (answer: string) => {
+  const handleAnswer = (answer: string): void => {
     const newAnswers = [...answers, answer];
     setAnswers(newAnswers);
 
     if (step < questions.length - 1) {
       setStep(step + 1);
     } else {
-      // AI "logic"
       const genre = decideGenre(newAnswers);
       const url = getTrackByGenre(genre);
       setTrackUrl(url);
@@ -60,14 +65,20 @@ export default function Home() {
       acoustic: "https://www.youtube.com/embed/63ft2c3q1xA",
       lofi: "https://www.youtube.com/embed/jfKfPfyJRdk",
       rock: "https://www.youtube.com/embed/kXYiU_JCYtU",
-      chill: "https://www.youtube.com/embed/5qap5aOQPac",
+      chill: "https://www.youtube.com/embed/5qap5aOQPac"
     };
     return tracks[genre] || tracks.chill;
   };
 
-  const shareToFarcaster = () => {
-    const text = `Just used @Mooder to find the perfect track for my mood! 🎵\n\nTry it: ${window.location.origin}`;
+  const shareToFarcaster = (): void => {
+    const text = `Just used @Mooder to find the perfect track for my mood!\n\nTry it: ${window.location.origin}`;
     window.open(`https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const reset = (): void => {
+    setStep(0);
+    setAnswers([]);
+    setTrackUrl("");
   };
 
   if (trackUrl) {
@@ -80,11 +91,10 @@ export default function Home() {
           src={trackUrl}
           allow="autoplay; encrypted-media"
           className="rounded-lg mb-6 max-w-md"
+          title="Music player"
         />
         <div className="flex gap-4">
-          <Button onClick={() => { setStep(0); setAnswers([]); setTrackUrl(""); }}>
-            Try Again
-          </Button>
+          <Button onClick={reset}>Try Again</Button>
           <Button onClick={shareToFarcaster} variant="secondary">
             Share on Farcaster
           </Button>
@@ -104,11 +114,9 @@ export default function Home() {
         </Button>
       ) : (
         <div className="w-full max-w-md">
-          <p className="text-lg mb-6 text-center">
-            {questions[step - 1]}
-          </p>
+          <p className="text-lg mb-6 text-center">{questions[step - 1]}</p>
           <div className="grid grid-cols-1 gap-3">
-            {options[step - 1].map((opt) => (
+            {options[step - 1].map((opt: string) => (
               <Button
                 key={opt}
                 variant="outline"
