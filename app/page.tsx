@@ -1,40 +1,25 @@
 'use client';
 
-import { Button } from "@minikit/ui";
 import { useState } from "react";
 
-interface Mood {
-  emoji: string;
-  label: string;
-  genres: string[];
-}
-
-const moods: Mood[] = [
-  { emoji: "smiling face", label: "Happy", genres: ["pop", "dance"] },
-  { emoji: "crying face", label: "Sad", genres: ["acoustic", "blues"] },
-  { emoji: "angry face", label: "Angry", genres: ["rock", "metal"] },
-  { emoji: "sunglasses", label: "Chill", genres: ["lofi", "jazz"] },
-  { emoji: "exploding head", label: "Energetic", genres: ["edm", "hip-hop"] }
-];
-
-const questions: string[] = [
-  "How's your energy level?",
-  "What's your main emotion?",
-  "Do you want to be alone or with others?"
-];
-
-const options: string[][] = [
-  ["Low", "Medium", "High"],
-  ["Happy", "Sad", "Angry", "Calm", "Excited"],
-  ["Alone", "With friends", "Doesn't matter"]
-];
-
 export default function Home() {
-  const [step, setStep] = useState<number>(0);
+  const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [trackUrl, setTrackUrl] = useState<string>("");
+  const [trackUrl, setTrackUrl] = useState("");
 
-  const handleAnswer = (answer: string): void => {
+  const questions = [
+    "How's your energy level?",
+    "What's your main emotion?",
+    "Do you want to be alone or with others?"
+  ];
+
+  const options = [
+    ["Low", "Medium", "High"],
+    ["Happy", "Sad", "Angry", "Calm", "Excited"],
+    ["Alone", "With friends", "Doesn't matter"]
+  ];
+
+  const handleAnswer = (answer: string) => {
     const newAnswers = [...answers, answer];
     setAnswers(newAnswers);
 
@@ -47,7 +32,7 @@ export default function Home() {
     }
   };
 
-  const decideGenre = (answers: string[]): string => {
+  const decideGenre = (answers: string[]) => {
     const energy = answers[0];
     const emotion = answers[1];
 
@@ -58,24 +43,23 @@ export default function Home() {
     return "chill";
   };
 
-  const getTrackByGenre = (genre: string): string => {
+  const getTrackByGenre = (genre: string) => {
     const tracks: Record<string, string> = {
-      pop: "https://www.youtube.com/embed/dQw4w9WgXcQ",
       dance: "https://www.youtube.com/embed/OPf0YbXqDm0",
       acoustic: "https://www.youtube.com/embed/63ft2c3q1xA",
-      lofi: "https://www.youtube.com/embed/jfKfPfyJRdk",
       rock: "https://www.youtube.com/embed/kXYiU_JCYtU",
+      lofi: "https://www.youtube.com/embed/jfKfPfyJRdk",
       chill: "https://www.youtube.com/embed/5qap5aOQPac"
     };
     return tracks[genre] || tracks.chill;
   };
 
-  const shareToFarcaster = (): void => {
-    const text = `Just used @Mooder to find the perfect track for my mood!\n\nTry it: ${window.location.origin}`;
+  const shareToFarcaster = () => {
+    const text = `Just used Mooder to find the perfect track for my mood!\n\nTry it: ${window.location.origin}`;
     window.open(`https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-  const reset = (): void => {
+  const reset = () => {
     setStep(0);
     setAnswers([]);
     setTrackUrl("");
@@ -94,10 +78,18 @@ export default function Home() {
           title="Music player"
         />
         <div className="flex gap-4">
-          <Button onClick={reset}>Try Again</Button>
-          <Button onClick={shareToFarcaster} variant="secondary">
+          <button
+            onClick={reset}
+            className="px-6 py-3 bg-white text-indigo-900 rounded-lg font-semibold hover:bg-gray-100 transition"
+          >
+            Try Again
+          </button>
+          <button
+            onClick={shareToFarcaster}
+            className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition"
+          >
             Share on Farcaster
-          </Button>
+          </button>
         </div>
       </main>
     );
@@ -109,22 +101,24 @@ export default function Home() {
       <p className="text-xl mb-8 opacity-90">AI picks music for your mood</p>
 
       {step === 0 ? (
-        <Button size="lg" onClick={() => setStep(1)}>
+        <button
+          onClick={() => setStep(1)}
+          className="px-8 py-4 bg-white text-indigo-900 text-xl font-bold rounded-xl hover:bg-gray-100 transition transform hover:scale-105"
+        >
           What's your mood?
-        </Button>
+        </button>
       ) : (
         <div className="w-full max-w-md">
           <p className="text-lg mb-6 text-center">{questions[step - 1]}</p>
           <div className="grid grid-cols-1 gap-3">
-            {options[step - 1].map((opt: string) => (
-              <Button
+            {options[step - 1].map((opt) => (
+              <button
                 key={opt}
-                variant="outline"
                 onClick={() => handleAnswer(opt)}
-                className="text-lg py-6"
+                className="px-6 py-4 bg-white/10 backdrop-blur-sm text-white rounded-lg font-medium hover:bg-white/20 transition border border-white/20"
               >
                 {opt}
-              </Button>
+              </button>
             ))}
           </div>
           <p className="text-sm mt-6 text-center opacity-70">
