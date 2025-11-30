@@ -1,9 +1,10 @@
-import './globals.css';
-import type { Metadata } from 'next';
+// app/layout.tsx
+import "./globals.css";
+import Providers from "./providers";
 
-export const metadata: Metadata = {
-  title: 'Mooder - AI Music for Your Mood',
-  description: 'AI picks music for your mood',
+export const metadata = {
+  title: "Mooder",
+  description: "AI підбирає музику під твій настрій",
 };
 
 export default function RootLayout({
@@ -12,8 +13,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="uk">
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
