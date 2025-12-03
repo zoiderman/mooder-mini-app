@@ -3,7 +3,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* або просто це, якщо без tailwind */
+/* Reset base spacing and sizing before Tailwind layers */
 * {
   margin: 0;
   padding: 0;

@@ -1,10 +1,11 @@
 // app/layout.tsx
+import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./providers";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Mooder",
-  description: "AI підбирає музику під твій настрій",
+  description: "AI companion that matches music to your mood.",
 };
 
 export default function RootLayout({
