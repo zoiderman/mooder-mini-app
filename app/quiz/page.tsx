@@ -15,100 +15,25 @@ type Track = {
   mood: string;
 };
 
-const MOOD_LEVELS: MoodLevel[] = ["Low", "Medium", "High"];
-const TONES: Tone[] = ["Happy", "Sad", "Angry", "Calm"];
-const CONTEXTS: Context[] = ["Alone", "With friends"];
-
-const STORAGE_KEYS = {
-  liked: "likedTracks",
-  blocked: "blockedTracks",
-};
-
 const tracks = tracksData as Track[];
 
 const buildSpotifyEmbedUrl = (id: string) =>
   `https://open.spotify.com/embed/track/${id}?utm_source=generator`;
-
-type OptionGroupProps<T extends string> = {
-  label: string;
-  options: readonly T[];
-  value: T;
-  onSelect: (val: T) => void;
-};
-
-function OptionGroup<T extends string>({
-  label,
-  options,
-  value,
-  onSelect,
-}: OptionGroupProps<T>) {
-  return (
-    <div className="space-y-2">
-      <label className="text-sm font-medium">{label}</label>
-      <div
-        className={`grid ${
-          options.length === 3 ? "grid-cols-3" : "grid-cols-2"
-        } gap-2 text-sm`}
-      >
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            className={`rounded-lg border px-2 py-2 transition active:scale-95 ${
-              value === opt ? "border-white bg-white/10" : "border-white/20"
-            }`}
-            onClick={() => onSelect(opt)}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type TrackListProps = {
-  title: string;
-  tracks: Track[];
-  onSelect: (track: Track) => void;
-  emptyText: string;
-};
-
-function TrackList({ title, tracks, onSelect, emptyText }: TrackListProps) {
-  return (
-    <div className="space-y-2">
-      <div className="font-semibold text-white">{title}</div>
-      <div className="max-h-40 overflow-y-auto pr-1 space-y-2">
-        {tracks.length === 0 ? (
-          <p className="text-white/50 text-[11px]">{emptyText}</p>
-        ) : (
-          tracks.map((track) => (
-            <button
-              key={track.id}
-              onClick={() => onSelect(track)}
-              className="w-full text-left rounded-lg border border-white/15 bg-white/5 p-2 space-y-1 hover:bg-white/10 transition cursor-pointer"
-            >
-              <div className="text-[11px] font-semibold">{track.title}</div>
-              <div className="text-[11px] text-white/70">{track.artist}</div>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function QuizPage() {
   const { data: session, status } = useSession();
 
   const [blockedTracks, setBlockedTracks] = useState<Track[]>([]);
   const [likedTracks, setLikedTracks] = useState<Track[]>([]);
+  const [playedTrackIds, setPlayedTrackIds] = useState<string[]>([]);
+
   const [moodLevel, setMoodLevel] = useState<MoodLevel>("Medium");
   const [tone, setTone] = useState<Tone>("Happy");
   const [context, setContext] = useState<Context>("With friends");
   const [note, setNote] = useState("");
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   const [toast, setToast] = useState<{
@@ -117,23 +42,18 @@ export default function QuizPage() {
   } | null>(null);
 
   useEffect(() => {
-    const liked = localStorage.getItem(STORAGE_KEYS.liked);
-    const blocked = localStorage.getItem(STORAGE_KEYS.blocked);
+    const liked = localStorage.getItem("likedTracks");
+    const blocked = localStorage.getItem("blockedTracks");
+    const played = localStorage.getItem("playedTrackIds");
 
     if (liked) setLikedTracks(JSON.parse(liked));
     if (blocked) setBlockedTracks(JSON.parse(blocked));
+    if (played) setPlayedTrackIds(JSON.parse(played));
   }, []);
 
   const showToast = (message: string, type: "like" | "dislike") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 2000);
-  };
-
-  const syncLists = (liked: Track[], blocked: Track[]) => {
-    setLikedTracks(liked);
-    setBlockedTracks(blocked);
-    localStorage.setItem(STORAGE_KEYS.liked, JSON.stringify(liked));
-    localStorage.setItem(STORAGE_KEYS.blocked, JSON.stringify(blocked));
   };
 
   const likeTrack = (track: Track) => {
@@ -142,9 +62,14 @@ export default function QuizPage() {
       return;
     }
 
-    const updatedLiked = [...likedTracks, track];
+    const updated = [...likedTracks, track];
+    setLikedTracks(updated);
+    localStorage.setItem("likedTracks", JSON.stringify(updated));
+
     const cleanedBlocked = blockedTracks.filter((t) => t.id !== track.id);
-    syncLists(updatedLiked, cleanedBlocked);
+    setBlockedTracks(cleanedBlocked);
+    localStorage.setItem("blockedTracks", JSON.stringify(cleanedBlocked));
+
     showToast("Added to favorites", "like");
   };
 
@@ -154,47 +79,15 @@ export default function QuizPage() {
       return;
     }
 
-    const updatedBlocked = [...blockedTracks, track];
+    const updated = [...blockedTracks, track];
+    setBlockedTracks(updated);
+    localStorage.setItem("blockedTracks", JSON.stringify(updated));
+
     const cleanedLiked = likedTracks.filter((t) => t.id !== track.id);
-    syncLists(cleanedLiked, updatedBlocked);
+    setLikedTracks(cleanedLiked);
+    localStorage.setItem("likedTracks", JSON.stringify(cleanedLiked));
+
     showToast("Added to skipped tracks", "dislike");
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    const filteredTracks = tracks.filter(
-      (track) => !blockedTracks.some((b) => b.id === track.id)
-    );
-
-    if (!filteredTracks.length) {
-      setSelectedTrack(null);
-      setIsLoading(false);
-      showToast("No tracks available (all skipped)", "dislike");
-      return;
-    }
-
-    const targetMoodParts = [moodLevel, tone, context].filter(Boolean);
-
-    const scored = filteredTracks.map((track) => {
-      const parts = track.mood.split(",").map((p) => p.trim());
-      const score = targetMoodParts.reduce(
-        (acc, part) => (parts.includes(part) ? acc + 1 : acc),
-        0
-      );
-      return { track, score };
-    });
-
-    const bestScore = Math.max(...scored.map((s) => s.score));
-    const candidates = scored.filter((s) => s.score === bestScore);
-    const picked = candidates[Math.floor(Math.random() * candidates.length)]
-      .track;
-
-    setTimeout(() => {
-      setSelectedTrack(picked);
-      setIsLoading(false);
-    }, 300);
   };
 
   if (status === "loading") {
@@ -223,8 +116,66 @@ export default function QuizPage() {
     );
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    // 1) прибираємо skipped
+    const withoutBlocked = tracks.filter(
+      (track) => !blockedTracks.some((b) => b.id === track.id)
+    );
+
+    if (!withoutBlocked.length) {
+      setSelectedTrack(null);
+      setIsLoading(false);
+      showToast("No tracks available (all skipped)", "dislike");
+      return;
+    }
+
+    // 2) намагаємось брати тільки ще не зіграні треки
+    const notPlayed = withoutBlocked.filter(
+      (track) => !playedTrackIds.includes(track.id)
+    );
+
+    const pool = notPlayed.length > 0 ? notPlayed : withoutBlocked;
+
+    const targetMoodParts = [moodLevel, tone, context];
+
+    const scored = pool.map((track) => {
+      const parts = track.mood.split(",").map((p) => p.trim());
+      let score = 0;
+      for (const part of targetMoodParts) {
+        if (parts.includes(part)) score += 1;
+      }
+      return { track, score };
+    });
+
+    const bestScore = Math.max(...scored.map((s) => s.score));
+    let candidates = scored.filter((s) => s.score === bestScore);
+
+    if (!candidates.length) {
+      candidates = scored;
+    }
+
+    const picked =
+      candidates[Math.floor(Math.random() * candidates.length)].track;
+
+    setTimeout(() => {
+      setSelectedTrack(picked);
+      setIsLoading(false);
+
+      setPlayedTrackIds((prev) => {
+        if (prev.includes(picked.id)) return prev;
+        const updated = [...prev, picked.id];
+        localStorage.setItem("playedTrackIds", JSON.stringify(updated));
+        return updated;
+      });
+    }, 300);
+  };
+
   return (
     <main className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+      {/* TOAST */}
       {toast && (
         <div
           className={`fixed top-4 right-4 z-30 rounded-lg px-4 py-2 text-sm shadow-lg border ${
@@ -238,6 +189,7 @@ export default function QuizPage() {
       )}
 
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gradient-to-b from-white/5 to-white/0 p-5 space-y-5">
+        {/* TOP BAR */}
         <div className="flex items-center justify-between text-xs text-white/60 mb-1">
           <span className="font-semibold tracking-wide">mooder</span>
           {isPanelOpen ? (
@@ -262,6 +214,7 @@ export default function QuizPage() {
           )}
         </div>
 
+        {/* LIBRARY PANEL UNDER HEADER */}
         {isPanelOpen && (
           <div className="mt-3 rounded-2xl border border-white/20 bg-black/90 p-3 text-xs space-y-3 shadow-xl">
             <div className="flex items-center justify-between text-white/60">
@@ -276,55 +229,141 @@ export default function QuizPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <TrackList
-                title="Favorites"
-                tracks={likedTracks}
-                onSelect={(track) => {
-                  setSelectedTrack(track);
-                  setIsPanelOpen(false);
-                }}
-                emptyText="No favorites yet."
-              />
-              <TrackList
-                title="Skipped tracks"
-                tracks={blockedTracks}
-                onSelect={(track) => {
-                  setSelectedTrack(track);
-                  setIsPanelOpen(false);
-                }}
-                emptyText="No skipped tracks."
-              />
+              {/* Favorites */}
+              <div className="space-y-2">
+                <div className="font-semibold text-white">Favorites</div>
+                <div className="max-h-40 overflow-y-auto pr-1 space-y-2">
+                  {likedTracks.length === 0 ? (
+                    <p className="text-white/50 text-[11px]">
+                      No favorites yet.
+                    </p>
+                  ) : (
+                    likedTracks.map((track) => (
+                      <button
+                        key={track.id}
+                        onClick={() => {
+                          setSelectedTrack(track);
+                          setIsPanelOpen(false);
+                        }}
+                        className="w-full text-left rounded-lg border border-white/15 bg-white/5 p-2 space-y-1 hover:bg-white/10 transition cursor-pointer"
+                      >
+                        <div className="text-[11px] font-semibold">
+                          {track.title}
+                        </div>
+                        <div className="text-[11px] text-white/70">
+                          {track.artist}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Skipped tracks */}
+              <div className="space-y-2">
+                <div className="font-semibold text-white">Skipped tracks</div>
+                <div className="max-h-40 overflow-y-auto pr-1 space-y-2">
+                  {blockedTracks.length === 0 ? (
+                    <p className="text-white/50 text-[11px]">
+                      No skipped tracks.
+                    </p>
+                  ) : (
+                    blockedTracks.map((track) => (
+                      <button
+                        key={track.id}
+                        onClick={() => {
+                          setSelectedTrack(track);
+                          setIsPanelOpen(false);
+                        }}
+                        className="w-full text-left rounded-lg border border-white/15 bg-white/5 p-2 space-y-1 hover:bg-white/10 transition cursor-pointer"
+                      >
+                        <div className="text-[11px] font-semibold">
+                          {track.title}
+                        </div>
+                        <div className="text-[11px] text-white/70">
+                          {track.artist}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
         <h1 className="text-2xl font-semibold text-center">mooder</h1>
         <p className="text-sm text-center text-white/70">
-          Answer a few questions - I&apos;ll pick a track that matches your vibe.
+          Answer a few questions — I&apos;ll pick a track that matches your
+          vibe.
         </p>
 
+        {/* FORM */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <OptionGroup
-            label="Current mood level?"
-            options={MOOD_LEVELS}
-            value={moodLevel}
-            onSelect={(val) => setMoodLevel(val as MoodLevel)}
-          />
+          {/* Mood level */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Current mood level?</label>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              {["Low", "Medium", "High"].map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  className={`rounded-lg border px-2 py-2 transition active:scale-95 ${
+                    moodLevel === lvl
+                      ? "border-white bg-white/10"
+                      : "border-white/20"
+                  }`}
+                  onClick={() => setMoodLevel(lvl as MoodLevel)}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <OptionGroup
-            label="What&apos;s the vibe?"
-            options={TONES}
-            value={tone}
-            onSelect={(val) => setTone(val as Tone)}
-          />
+          {/* Tone */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">What&apos;s the vibe?</label>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {["Happy", "Sad", "Angry", "Calm"].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`rounded-lg border px-2 py-2 transition active:scale-95 ${
+                    tone === t ? "border-white bg-white/10" : "border-white/20"
+                  }`}
+                  onClick={() => setTone(t as Tone)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <OptionGroup
-            label="Are you alone or with someone?"
-            options={CONTEXTS}
-            value={context}
-            onSelect={(val) => setContext(val as Context)}
-          />
+          {/* Context */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Are you alone or with someone?
+            </label>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {["Alone", "With friends"].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`rounded-lg border px-2 py-2 transition active:scale-95 ${
+                    context === c
+                      ? "border-white bg-white/10"
+                      : "border-white/20"
+                  }`}
+                  onClick={() => setContext(c as Context)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
 
+          {/* Note */}
           <div className="space-y-2">
             <label className="text-sm font-medium">
               Want to add a detail (situation / vibe)?
@@ -347,6 +386,7 @@ export default function QuizPage() {
           </button>
         </form>
 
+        {/* RESULT */}
         {selectedTrack && (
           <div className="mt-4 space-y-2 rounded-xl border border-white/15 bg-white/5 p-3 text-sm">
             <div className="text-xs uppercase text-white/60">Your track</div>
