@@ -15,7 +15,7 @@ const handler = NextAuth({
       return token;
     },
     session({ session, token }) {
-      // @ts-ignore
+      // @ts-expect-error
       session.access_token = token.access_token;
       return session;
     },
