@@ -15,7 +15,8 @@ const handler = NextAuth({
       return token;
     },
     session({ session, token }) {
-      // @ts-expect-error
+      // @ts-expect-error next-auth type mismatch on auth handler
+
       session.access_token = token.access_token;
       return session;
     },
