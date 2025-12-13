@@ -2,20 +2,56 @@
 
 import { useEffect, useState } from "react";
 import { useSession, signIn } from "next-auth/react";
-import tracksData from "@/data/tracks.json";
 
 type MoodLevel = "Low" | "Medium" | "High";
 type Tone = "Happy" | "Sad" | "Angry" | "Calm";
-type Context = "Alone" | "With friends";
+type Context = "Alone" | "In pair" | "With company";
+
+type GenreOption =
+  | "Electronic"
+  | "Techno"
+  | "House"
+  | "Drum & Bass"
+  | "Hip-Hop"
+  | "Pop"
+  | "Rock"
+  | "Classical"
+  | "Instrumental"
+  | "Ambient"
+  | "Jazz"
+  | "Metal";
+
+type EraOption = "Any" | "1980s" | "1990s" | "2000s" | "2010s" | "2020s";
 
 type Track = {
   id: string;
   title: string;
   artist: string;
-  mood: string;
 };
 
-const tracks = tracksData as Track[];
+const ALL_GENRES: GenreOption[] = [
+  "Electronic",
+  "Techno",
+  "House",
+  "Drum & Bass",
+  "Hip-Hop",
+  "Pop",
+  "Rock",
+  "Classical",
+  "Instrumental",
+  "Ambient",
+  "Jazz",
+  "Metal",
+];
+
+const ALL_ERAS: EraOption[] = [
+  "Any",
+  "1980s",
+  "1990s",
+  "2000s",
+  "2010s",
+  "2020s",
+];
 
 const buildSpotifyEmbedUrl = (id: string) =>
   `https://open.spotify.com/embed/track/${id}?utm_source=generator`;
@@ -29,12 +65,17 @@ export default function QuizPage() {
 
   const [moodLevel, setMoodLevel] = useState<MoodLevel>("Medium");
   const [tone, setTone] = useState<Tone>("Happy");
-  const [context, setContext] = useState<Context>("With friends");
+  const [context, setContext] = useState<Context>("Alone");
   const [note, setNote] = useState("");
+
+  const [genres, setGenres] = useState<GenreOption[]>([]);
+  const [era, setEra] = useState<EraOption>("Any");
+
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   const [toast, setToast] = useState<{
     message: string;
@@ -90,6 +131,63 @@ export default function QuizPage() {
     showToast("Added to skipped tracks", "dislike");
   };
 
+  const toggleGenre = (g: GenreOption) => {
+    setGenres((prev) => {
+      if (prev.includes(g)) return prev.filter((x) => x !== g);
+      return [...prev, g];
+    });
+  };
+
+  const pickTrack = async () => {
+    setIsLoading(true);
+
+    try {
+      const excludeTrackIds = [
+        ...playedTrackIds,
+        ...blockedTracks.map((t) => t.id),
+      ];
+
+      const res = await fetch("/api/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moodLevel,
+          tone,
+          context,
+          note,
+          genres,
+          era,
+          excludeTrackIds,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = (data as any).error || "Failed to get recommendation";
+        showToast(msg, "dislike");
+        setSelectedTrack(null);
+        return;
+      }
+
+      const data = (await res.json()) as Track;
+
+      setSelectedTrack(data);
+
+      setPlayedTrackIds((prev) => {
+        if (prev.includes(data.id)) return prev;
+        const updated = [...prev, data.id];
+        localStorage.setItem("playedTrackIds", JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error(err);
+      showToast("Error talking to AI or Spotify", "dislike");
+      setSelectedTrack(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (status === "loading") {
     return (
       <main className="min-h-screen flex items-center justify-center bg-black text-white">
@@ -116,66 +214,8 @@ export default function QuizPage() {
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    // 1) прибираємо skipped
-    const withoutBlocked = tracks.filter(
-      (track) => !blockedTracks.some((b) => b.id === track.id)
-    );
-
-    if (!withoutBlocked.length) {
-      setSelectedTrack(null);
-      setIsLoading(false);
-      showToast("No tracks available (all skipped)", "dislike");
-      return;
-    }
-
-    // 2) намагаємось брати тільки ще не зіграні треки
-    const notPlayed = withoutBlocked.filter(
-      (track) => !playedTrackIds.includes(track.id)
-    );
-
-    const pool = notPlayed.length > 0 ? notPlayed : withoutBlocked;
-
-    const targetMoodParts = [moodLevel, tone, context];
-
-    const scored = pool.map((track) => {
-      const parts = track.mood.split(",").map((p) => p.trim());
-      let score = 0;
-      for (const part of targetMoodParts) {
-        if (parts.includes(part)) score += 1;
-      }
-      return { track, score };
-    });
-
-    const bestScore = Math.max(...scored.map((s) => s.score));
-    let candidates = scored.filter((s) => s.score === bestScore);
-
-    if (!candidates.length) {
-      candidates = scored;
-    }
-
-    const picked =
-      candidates[Math.floor(Math.random() * candidates.length)].track;
-
-    setTimeout(() => {
-      setSelectedTrack(picked);
-      setIsLoading(false);
-
-      setPlayedTrackIds((prev) => {
-        if (prev.includes(picked.id)) return prev;
-        const updated = [...prev, picked.id];
-        localStorage.setItem("playedTrackIds", JSON.stringify(updated));
-        return updated;
-      });
-    }, 300);
-  };
-
   return (
     <main className="min-h-screen bg-black text-white flex items-center justify-center p-4">
-      {/* TOAST */}
       {toast && (
         <div
           className={`fixed top-4 right-4 z-30 rounded-lg px-4 py-2 text-sm shadow-lg border ${
@@ -189,32 +229,111 @@ export default function QuizPage() {
       )}
 
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gradient-to-b from-white/5 to-white/0 p-5 space-y-5">
-        {/* TOP BAR */}
         <div className="flex items-center justify-between text-xs text-white/60 mb-1">
           <span className="font-semibold tracking-wide">mooder</span>
-          {isPanelOpen ? (
+
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsPanelOpen(false)}
-              className="px-2 py-1 rounded-md border border-white/30 hover:bg-white/10 transition text-[11px]"
+              onClick={() => setIsFiltersOpen((v) => !v)}
+              className="px-2 py-1 rounded-md border border-white/25 hover:bg-white/10 text-[11px] transition"
             >
-              Close library
+              Filters
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsPanelOpen(true)}
-              className="flex flex-col gap-[3px] px-2 py-1 rounded-md border border-white/20 hover:border-white/60 hover:bg-white/10 transition active:scale-95"
-              aria-label="Open favorites and skipped tracks"
-            >
-              <span className="h-[2px] w-4 bg-white/80 rounded-full" />
-              <span className="h-[2px] w-4 bg-white/80 rounded-full" />
-              <span className="h-[2px] w-4 bg-white/80 rounded-full" />
-            </button>
-          )}
+
+            {isPanelOpen ? (
+              <button
+                type="button"
+                onClick={() => setIsPanelOpen(false)}
+                className="px-2 py-1 rounded-md border border-white/30 hover:bg-white/10 transition text-[11px]"
+              >
+                Close library
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPanelOpen(true)}
+                className="flex flex-col gap-[3px] px-2 py-1 rounded-md border border-white/20 hover:border-white/60 hover:bg-white/10 transition active:scale-95"
+                aria-label="Open favorites and skipped tracks"
+              >
+                <span className="h-[2px] w-4 bg-white/80 rounded-full" />
+                <span className="h-[2px] w-4 bg-white/80 rounded-full" />
+                <span className="h-[2px] w-4 bg-white/80 rounded-full" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* LIBRARY PANEL UNDER HEADER */}
+        {isFiltersOpen && (
+          <div className="mt-2 rounded-2xl border border-white/20 bg-black/90 p-3 text-xs space-y-3 shadow-xl">
+            <div className="flex items-center justify-between text-white/60 mb-1">
+              <span className="font-semibold">Filters</span>
+              <button
+                type="button"
+                className="text-white/60 hover:text-white underline"
+                onClick={() => setIsFiltersOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-[11px] text-white/70">
+                Favorite genres (multi-select)
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {ALL_GENRES.map((g) => {
+                  const selected = genres.includes(g);
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      className={`px-2 py-1 rounded-full border text-[11px] ${
+                        selected
+                          ? "border-white bg-white/15"
+                          : "border-white/25"
+                      }`}
+                      onClick={() => toggleGenre(g)}
+                    >
+                      {g}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-md border border-white/25 hover:bg-white/10 text-[11px]"
+                  onClick={() => setGenres([])}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-[11px] text-white/70">Era</div>
+              <div className="flex flex-wrap gap-1">
+                {ALL_ERAS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    className={`px-2 py-1 rounded-full border text-[11px] ${
+                      era === e
+                        ? "border-white bg-white/15"
+                        : "border-white/25"
+                    }`}
+                    onClick={() => setEra(e as EraOption)}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {isPanelOpen && (
           <div className="mt-3 rounded-2xl border border-white/20 bg-black/90 p-3 text-xs space-y-3 shadow-xl">
             <div className="flex items-center justify-between text-white/60">
@@ -229,7 +348,6 @@ export default function QuizPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {/* Favorites */}
               <div className="space-y-2">
                 <div className="font-semibold text-white">Favorites</div>
                 <div className="max-h-40 overflow-y-auto pr-1 space-y-2">
@@ -259,7 +377,6 @@ export default function QuizPage() {
                 </div>
               </div>
 
-              {/* Skipped tracks */}
               <div className="space-y-2">
                 <div className="font-semibold text-white">Skipped tracks</div>
                 <div className="max-h-40 overflow-y-auto pr-1 space-y-2">
@@ -298,9 +415,7 @@ export default function QuizPage() {
           vibe.
         </p>
 
-        {/* FORM */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Mood level */}
+        <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Current mood level?</label>
             <div className="grid grid-cols-3 gap-2 text-sm">
@@ -321,7 +436,6 @@ export default function QuizPage() {
             </div>
           </div>
 
-          {/* Tone */}
           <div className="space-y-2">
             <label className="text-sm font-medium">What&apos;s the vibe?</label>
             <div className="grid grid-cols-2 gap-2 text-sm">
@@ -340,13 +454,10 @@ export default function QuizPage() {
             </div>
           </div>
 
-          {/* Context */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Are you alone or with someone?
-            </label>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {["Alone", "With friends"].map((c) => (
+            <label className="text-sm font-medium">Who are you with?</label>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              {["Alone", "In pair", "With company"].map((c) => (
                 <button
                   key={c}
                   type="button"
@@ -363,30 +474,33 @@ export default function QuizPage() {
             </div>
           </div>
 
-          {/* Note */}
           <div className="space-y-2">
             <label className="text-sm font-medium">
-              Want to add a detail (situation / vibe)?
+              Add details (any language)
             </label>
             <textarea
               className="w-full rounded-lg border border-white/20 bg-black/40 px-3 py-2 text-sm outline-none focus:border-white"
               rows={2}
-              placeholder="Example: night drive, workout, work, thinking..."
+              placeholder='Example: "Я дуже втомлений після роботи, хочу музику для відпочинку"'
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
           </div>
 
           <button
-            type="submit"
+            type="button"
+            onClick={pickTrack}
             className="w-full rounded-lg bg-white text-black py-2 text-sm font-semibold disabled:bg-white/40 transition active:scale-95"
             disabled={isLoading}
           >
-            {isLoading ? "Picking a track..." : "Pick a track"}
+            {isLoading
+              ? "Picking a track..."
+              : selectedTrack
+              ? "Next track"
+              : "Pick a track"}
           </button>
-        </form>
+        </div>
 
-        {/* RESULT */}
         {selectedTrack && (
           <div className="mt-4 space-y-2 rounded-xl border border-white/15 bg-white/5 p-3 text-sm">
             <div className="text-xs uppercase text-white/60">Your track</div>
