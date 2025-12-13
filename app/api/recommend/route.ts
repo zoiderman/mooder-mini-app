@@ -21,6 +21,17 @@ type EraOption = "Any" | "1980s" | "1990s" | "2000s" | "2010s" | "2020s";
 
 type ContextOption = "Alone" | "In pair" | "With company";
 
+type SpotifyArtist = { name?: string };
+type SpotifyAlbum = { name?: string; release_date?: string };
+
+type SpotifyTrack = {
+  id: string;
+  name?: string;
+  popularity?: number;
+  artists?: SpotifyArtist[];
+  album?: SpotifyAlbum;
+};
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_MODEL = "mixtral-8x7b-32768";
 
@@ -48,8 +59,8 @@ async function getSpotifyToken() {
     throw new Error(`Spotify token error: ${text}`);
   }
 
-  const data = await res.json();
-  return data.access_token as string;
+  const data = (await res.json()) as { access_token: string };
+  return data.access_token;
 }
 
 function matchEra(year: number | null, era: EraOption): boolean {
@@ -71,7 +82,7 @@ function matchEra(year: number | null, era: EraOption): boolean {
   }
 }
 
-function shouldBlockRussian(text: string | undefined) {
+function shouldBlockRussian(text?: string) {
   if (!text) return false;
   const t = text.toLowerCase();
 
@@ -89,15 +100,15 @@ function shouldBlockRussian(text: string | undefined) {
   return false;
 }
 
-function filterOutRussianTracks(items: any[]) {
+function filterOutRussianTracks(items: SpotifyTrack[]) {
   return items.filter((item) => {
-    const name = item?.name as string | undefined;
+    const name = item?.name;
     if (shouldBlockRussian(name)) return false;
 
-    const albumName = item?.album?.name as string | undefined;
+    const albumName = item?.album?.name;
     if (shouldBlockRussian(albumName)) return false;
 
-    const artists = (item?.artists || []) as any[];
+    const artists: SpotifyArtist[] = item?.artists || [];
     for (const a of artists) {
       if (shouldBlockRussian(a?.name)) return false;
     }
@@ -107,7 +118,7 @@ function filterOutRussianTracks(items: any[]) {
 }
 
 // UA intent: ONLY explicit request words, not "any Ukrainian language"
-function isExplicitUkrainianRequest(note: string | undefined) {
+function isExplicitUkrainianRequest(note?: string) {
   const t = (note || "").toLowerCase();
   return (
     t.includes("ukrain") ||
@@ -121,7 +132,7 @@ function isExplicitUkrainianRequest(note: string | undefined) {
   );
 }
 
-function gatherText(item: any) {
+function gatherText(item: SpotifyTrack) {
   const parts: string[] = [];
   if (item?.name) parts.push(String(item.name));
   if (item?.album?.name) parts.push(String(item.album.name));
@@ -131,7 +142,7 @@ function gatherText(item: any) {
   return parts.join(" ").toLowerCase();
 }
 
-function uaSignalScore(item: any) {
+function uaSignalScore(item: SpotifyTrack) {
   const text = gatherText(item);
 
   let score = 0;
@@ -143,7 +154,7 @@ function uaSignalScore(item: any) {
 }
 
 // Genre score makes genre always the top priority
-function genreScore(item: any, genres: GenreOption[]) {
+function genreScore(item: SpotifyTrack, genres: GenreOption[]) {
   const text = gatherText(item);
   let score = 0;
 
@@ -347,32 +358,24 @@ Preferred era: ${input.era}
       return null;
     }
 
-    const data = await res.json();
-    const content: string | undefined = data?.choices?.[0]?.message?.content
-      ?.trim?.();
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
 
+    const content = data?.choices?.[0]?.message?.content?.trim();
     if (!content || content.length < 3) return null;
 
     return content.replace(/["'\n\r]+/g, " ").trim();
-  } catch (err: any) {
-    console.warn("Groq request failed, using fallback:", err?.message);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("Groq request failed, using fallback:", msg);
     return null;
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-
-    const {
-      moodLevel,
-      tone,
-      context,
-      note,
-      genres,
-      era,
-      excludeTrackIds,
-    } = body as {
+    const body = (await req.json()) as {
       moodLevel: string;
       tone: string;
       context: ContextOption;
@@ -381,6 +384,9 @@ export async function POST(req: Request) {
       era: EraOption;
       excludeTrackIds?: string[];
     };
+
+    const { moodLevel, tone, context, note, genres, era, excludeTrackIds } =
+      body;
 
     const excludeSet = new Set(excludeTrackIds || []);
     const selectedGenres = genres || [];
@@ -421,8 +427,11 @@ export async function POST(req: Request) {
       throw new Error(`Spotify search error: ${text}`);
     }
 
-    const searchData = await searchRes.json();
-    let items = (searchData?.tracks?.items || []) as any[];
+    const searchData = (await searchRes.json()) as {
+      tracks?: { items?: SpotifyTrack[] };
+    };
+
+    let items: SpotifyTrack[] = searchData?.tracks?.items || [];
 
     if (!items.length) {
       return NextResponse.json(
@@ -441,7 +450,7 @@ export async function POST(req: Request) {
     }
 
     const withEra = items.filter((item) => {
-      const dateStr = item?.album?.release_date as string | undefined;
+      const dateStr = item?.album?.release_date;
       const year = dateStr ? parseInt(dateStr.slice(0, 4), 10) : null;
       return matchEra(year, era);
     });
@@ -464,22 +473,23 @@ export async function POST(req: Request) {
       return (b.popularity ?? 0) - (a.popularity ?? 0);
     });
 
-    let filtered = ranked.filter((t) => !excludeSet.has(t.id as string));
+    let filtered = ranked.filter((t) => !excludeSet.has(t.id));
     if (!filtered.length) filtered = ranked;
 
-    const top = filtered.slice(0, 5);
+    const top: SpotifyTrack[] = filtered.slice(0, 5);
     const picked = top[Math.floor(Math.random() * top.length)];
 
     return NextResponse.json({
-      id: picked.id as string,
-      title: picked.name as string,
-      artist: (picked.artists || []).map((a: any) => a.name).join(", "),
+      id: picked.id,
+      title: picked.name || "Unknown title",
+      artist: (picked.artists || [])
+        .map((a) => a.name)
+        .filter((v): v is string => Boolean(v))
+        .join(", "),
     });
-  } catch (err: any) {
-    console.error("Recommend API error:", err);
-    return NextResponse.json(
-      { error: err.message || "Internal error" },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Recommend API error:", msg);
+    return NextResponse.json({ error: msg || "Internal error" }, { status: 500 });
   }
 }
