@@ -56,6 +56,8 @@ const ALL_ERAS: EraOption[] = [
 const buildSpotifyEmbedUrl = (id: string) =>
   `https://open.spotify.com/embed/track/${id}?utm_source=generator`;
 
+type RecommendError = { error?: string };
+
 export default function QuizPage() {
   const { data: session, status } = useSession();
 
@@ -87,9 +89,9 @@ export default function QuizPage() {
     const blocked = localStorage.getItem("blockedTracks");
     const played = localStorage.getItem("playedTrackIds");
 
-    if (liked) setLikedTracks(JSON.parse(liked));
-    if (blocked) setBlockedTracks(JSON.parse(blocked));
-    if (played) setPlayedTrackIds(JSON.parse(played));
+    if (liked) setLikedTracks(JSON.parse(liked) as Track[]);
+    if (blocked) setBlockedTracks(JSON.parse(blocked) as Track[]);
+    if (played) setPlayedTrackIds(JSON.parse(played) as string[]);
   }, []);
 
   const showToast = (message: string, type: "like" | "dislike") => {
@@ -162,8 +164,14 @@ export default function QuizPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        const msg = (data as any).error || "Failed to get recommendation";
+        let msg = "Failed to get recommendation";
+        try {
+          const errData = (await res.json()) as RecommendError;
+          if (errData?.error) msg = errData.error;
+        } catch {
+          // ignore
+        }
+
         showToast(msg, "dislike");
         setSelectedTrack(null);
         return;
@@ -411,8 +419,7 @@ export default function QuizPage() {
 
         <h1 className="text-2xl font-semibold text-center">mooder</h1>
         <p className="text-sm text-center text-white/70">
-          Answer a few questions — I&apos;ll pick a track that matches your
-          vibe.
+          Answer a few questions — I&apos;ll pick a track that matches your vibe.
         </p>
 
         <div className="space-y-4">
@@ -475,9 +482,7 @@ export default function QuizPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Add details (any language)
-            </label>
+            <label className="text-sm font-medium">Add details (any language)</label>
             <textarea
               className="w-full rounded-lg border border-white/20 bg-black/40 px-3 py-2 text-sm outline-none focus:border-white"
               rows={2}
