@@ -27,6 +27,9 @@ type Track = {
   id: string;
   title: string;
   artist: string;
+  spotifyUrl?: string;
+  youtubeVideoId?: string;
+  soundcloudUrl?: string;
 };
 
 const ALL_GENRES: GenreOption[] = [
@@ -55,6 +58,12 @@ const ALL_ERAS: EraOption[] = [
 
 const buildSpotifyEmbedUrl = (id: string) =>
   `https://open.spotify.com/embed/track/${id}?utm_source=generator`;
+const buildYoutubeEmbedUrl = (id: string) =>
+  `https://www.youtube.com/embed/${id}`;
+const buildSoundcloudEmbedUrl = (url: string) =>
+  `https://w.soundcloud.com/player/?url=${encodeURIComponent(
+    url
+  )}&auto_play=false`;
 
 type RecommendError = { error?: string };
 
@@ -78,6 +87,7 @@ export default function QuizPage() {
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(false);
 
   const [toast, setToast] = useState<{
     message: string;
@@ -88,10 +98,14 @@ export default function QuizPage() {
     const liked = localStorage.getItem("likedTracks");
     const blocked = localStorage.getItem("blockedTracks");
     const played = localStorage.getItem("playedTrackIds");
+    const ua = navigator.userAgent.toLowerCase();
+    const mobile =
+      /android|iphone|ipad|ipod|mobile/.test(ua) || ua.includes(" wv");
 
     if (liked) setLikedTracks(JSON.parse(liked) as Track[]);
     if (blocked) setBlockedTracks(JSON.parse(blocked) as Track[]);
     if (played) setPlayedTrackIds(JSON.parse(played) as string[]);
+    setIsMobileView(mobile);
   }, []);
 
   const showToast = (message: string, type: "like" | "dislike") => {
@@ -116,7 +130,7 @@ export default function QuizPage() {
     showToast("Added to favorites", "like");
   };
 
-  const dislikeTrack = (track: Track) => {
+  const dislikeTrack = async (track: Track) => {
     if (blockedTracks.some((t) => t.id === track.id)) {
       showToast("Already in skipped tracks", "dislike");
       return;
@@ -131,6 +145,7 @@ export default function QuizPage() {
     localStorage.setItem("likedTracks", JSON.stringify(cleanedLiked));
 
     showToast("Added to skipped tracks", "dislike");
+    await pickTrack([track.id]);
   };
 
   const toggleGenre = (g: GenreOption) => {
@@ -140,14 +155,17 @@ export default function QuizPage() {
     });
   };
 
-  const pickTrack = async () => {
+  const pickTrack = async (extraExclude: string[] = []) => {
     setIsLoading(true);
 
     try {
-      const excludeTrackIds = [
-        ...playedTrackIds,
-        ...blockedTracks.map((t) => t.id),
-      ];
+      const excludeTrackIds = Array.from(
+        new Set([
+          ...playedTrackIds,
+          ...blockedTracks.map((t) => t.id),
+          ...extraExclude,
+        ])
+      );
 
       const res = await fetch("/api/recommend", {
         method: "POST",
@@ -494,7 +512,9 @@ export default function QuizPage() {
 
           <button
             type="button"
-            onClick={pickTrack}
+            onClick={() => {
+              void pickTrack();
+            }}
             className="w-full rounded-lg bg-white text-black py-2 text-sm font-semibold disabled:bg-white/40 transition active:scale-95"
             disabled={isLoading}
           >
@@ -512,19 +532,58 @@ export default function QuizPage() {
             <div className="font-semibold">{selectedTrack.title}</div>
             <div className="text-white/70">{selectedTrack.artist}</div>
 
-            <div className="mt-3">
-              <iframe
-                src={buildSpotifyEmbedUrl(selectedTrack.id)}
-                width="100%"
-                height="80"
-                frameBorder="0"
-                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                loading="lazy"
-                title={`Spotify player for ${selectedTrack.title}`}
-                className="w-full rounded-lg border border-white/20"
-              ></iframe>
+            <div className="mt-3 space-y-3">
+              {isMobileView ? (
+                selectedTrack.youtubeVideoId ? (
+                  <iframe
+                    src={buildYoutubeEmbedUrl(selectedTrack.youtubeVideoId)}
+                    width="100%"
+                    height="200"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    loading="lazy"
+                    title={`YouTube player for ${selectedTrack.title}`}
+                    className="w-full rounded-lg border border-white/20"
+                  ></iframe>
+                ) : selectedTrack.soundcloudUrl ? (
+                  <iframe
+                    src={buildSoundcloudEmbedUrl(selectedTrack.soundcloudUrl)}
+                    width="100%"
+                    height="166"
+                    scrolling="no"
+                    frameBorder="no"
+                    allow="autoplay"
+                    loading="lazy"
+                    title={`SoundCloud player for ${selectedTrack.title}`}
+                    className="w-full rounded-lg border border-white/20"
+                  ></iframe>
+                ) : null
+              ) : (
+                <iframe
+                  src={buildSpotifyEmbedUrl(selectedTrack.id)}
+                  width="100%"
+                  height="80"
+                  frameBorder="0"
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                  title={`Spotify player for ${selectedTrack.title}`}
+                  className="w-full rounded-lg border border-white/20"
+                ></iframe>
+              )}
 
-              <div className="flex gap-3 mt-3">
+              {selectedTrack.spotifyUrl && (
+                <a
+                  href={selectedTrack.spotifyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-full items-center justify-center rounded-lg bg-green-500 px-3 py-2 text-sm font-semibold text-black transition hover:bg-green-400"
+                >
+                  Open in Spotify
+                </a>
+              )}
+
+              <div className="flex gap-3">
                 <button
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-semibold transition active:scale-95"
                   onClick={() => likeTrack(selectedTrack)}

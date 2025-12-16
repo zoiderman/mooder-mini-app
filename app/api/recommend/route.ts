@@ -30,6 +30,7 @@ type SpotifyTrack = {
   popularity?: number;
   artists?: SpotifyArtist[];
   album?: SpotifyAlbum;
+  external_urls?: { spotify?: string };
 };
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
@@ -479,14 +480,28 @@ export async function POST(req: Request) {
     const top: SpotifyTrack[] = filtered.slice(0, 5);
     const picked = top[Math.floor(Math.random() * top.length)];
 
-    return NextResponse.json({
+    const spotifyUrl =
+      picked.external_urls?.spotify ||
+      `https://open.spotify.com/track/${picked.id}`;
+
+    const response: {
+      id: string;
+      title: string;
+      artist: string;
+      spotifyUrl?: string;
+      youtubeVideoId?: string;
+      soundcloudUrl?: string;
+    } = {
       id: picked.id,
       title: picked.name || "Unknown title",
       artist: (picked.artists || [])
         .map((a) => a.name)
         .filter((v): v is string => Boolean(v))
         .join(", "),
-    });
+      spotifyUrl,
+    };
+
+    return NextResponse.json(response);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("Recommend API error:", msg);
