@@ -87,18 +87,15 @@ function shouldBlockRussian(text?: string) {
   if (!text) return false;
   const t = text.toLowerCase();
 
-  if (/[ёыэъ]/.test(t)) return true;
+  const blockedTokens = [
+    "russian",
+    "\u0440\u043e\u0441\u0441\u0438",
+    "\u0440\u043e\u0441\u0456\u0439",
+    "\u0440\u043e\u0441\u0456\u044f",
+    "\u043c\u043e\u0441\u043a\u0432",
+  ];
 
-  if (
-    t.includes("русск") ||
-    t.includes("росси") ||
-    t.includes("россия") ||
-    t.includes("russian")
-  ) {
-    return true;
-  }
-
-  return false;
+  return blockedTokens.some((kw) => t.includes(kw));
 }
 
 function filterOutRussianTracks(items: SpotifyTrack[]) {
@@ -127,10 +124,110 @@ function isExplicitUkrainianRequest(note?: string) {
     t.includes("ukr ") ||
     t.includes("ua rap") ||
     t.includes("ua hip") ||
-    t.includes("україн") ||
-    t.includes("укр") ||
-    t.includes("украин")
+    t.includes("\u0443\u043a\u0440\u0430\u0457\u043d") ||
+    t.includes("\u0443\u043a\u0440") ||
+    t.includes("\u0443\u043a\u0440\u0430\u0457") ||
+    t.includes("\u0443\u043a\u0440\u0430\u0457\u043d\u0441") ||
+    t.includes("\u0443\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a")
   );
+}
+
+function isExplicitAmericanRequest(note?: string) {
+  const t = (note || "").toLowerCase();
+  const keywords = [
+    "american",
+    "us rap",
+    "usa",
+    "wu-tang",
+    "wu tang",
+    "90s hip hop",
+    "east coast",
+    "west coast",
+    "\u0430\u043c\u0435\u0440\u0438\u043a\u0430\u043d",
+    "\u0448\u0442\u0430\u0442\u0438",
+    "\u0441\u0448\u0430",
+    "\u0432\u0443-\u0442\u0435\u043d\u0433",
+    "\u0432\u0443 \u0442\u0435\u043d\u0433",
+  ];
+
+  return keywords.some((kw) => t.includes(kw));
+}
+
+function inferEraFromNote(note?: string): EraOption | null {
+  const t = (note || "").toLowerCase();
+
+  const eraPatterns: Array<{ era: EraOption; patterns: RegExp[] }> = [
+    {
+      era: "1980s",
+      patterns: [
+        /\b80s\b/,
+        /\b1980s?\b/,
+        /\b198\d\b/,
+        /\b80-\u0445\b/,
+        /\b80\u0445\b/,
+      ],
+    },
+    {
+      era: "1990s",
+      patterns: [
+        /\b90s\b/,
+        /\b1990s?\b/,
+        /\b199\d\b/,
+        /\b90-\u0445\b/,
+        /\b90\u0445\b/,
+      ],
+    },
+    {
+      era: "2000s",
+      patterns: [
+        /\b00s\b/,
+        /\b2000s?\b/,
+        /\b200\d\b/,
+        /\b00-\u0445\b/,
+        /\b00\u0445\b/,
+        /\b2000-\u0445\b/,
+        /\b2000\u0445\b/,
+      ],
+    },
+    {
+      era: "2010s",
+      patterns: [
+        /\b2010s?\b/,
+        /\b201\d\b/,
+        /\b2010-\u0445\b/,
+        /\b2010\u0445\b/,
+      ],
+    },
+    {
+      era: "2020s",
+      patterns: [
+        /\b2020s?\b/,
+        /\b202\d\b/,
+        /\b2020-\u0445\b/,
+        /\b2020\u0445\b/,
+      ],
+    },
+  ];
+
+  for (const { era, patterns } of eraPatterns) {
+    if (patterns.some((p) => p.test(t))) return era;
+  }
+
+  return null;
+}
+
+function isForbiddenGroqQuery(query: string) {
+  const t = query.toLowerCase();
+  const forbiddenTokens = [
+    "russian",
+    "\u0440\u043e\u0441\u0441\u0438\u044f",
+    "\u0440\u043e\u0441\u0441\u0438",
+    "\u0440\u043e\u0441\u0456\u0439",
+    "\u0440\u043e\u0441\u0456\u044f",
+    "moscow",
+    "\u043c\u043e\u0441\u043a\u0432",
+  ];
+  return forbiddenTokens.some((kw) => t.includes(kw));
 }
 
 function gatherText(item: SpotifyTrack) {
@@ -148,8 +245,8 @@ function uaSignalScore(item: SpotifyTrack) {
 
   let score = 0;
   if (text.includes("ukrain")) score += 6;
-  if (text.includes("укра")) score += 6;
-  if (/[ієїґ]/.test(text)) score += 3;
+  if (text.includes("\u0443\u043a\u0440\u0430\u0457\u043d")) score += 6;
+  if (/[\u0456\u0457\u0491]/u.test(text)) score += 3;
 
   return score;
 }
@@ -195,7 +292,8 @@ function genreScore(item: SpotifyTrack, genres: GenreOption[]) {
         break;
 
       case "Drum & Bass":
-        if (has("drum and bass") || has("drum & bass") || has("dnb")) score += 9;
+        if (has("drum and bass") || has("drum & bass") || has("dnb"))
+          score += 9;
         if (has("liquid")) score += 5;
         break;
 
@@ -239,7 +337,9 @@ function buildFallbackQuery(params: {
   context: ContextOption;
   note: string;
   genres: GenreOption[];
-  era: EraOption;
+  effectiveEra: EraOption;
+  uaRequested: boolean;
+  americanRequested: boolean;
 }) {
   const parts: string[] = [];
 
@@ -288,6 +388,9 @@ function buildFallbackQuery(params: {
     }
   }
 
+  if (params.americanRequested) parts.push("american us");
+  if (params.uaRequested) parts.push("ukrainian ua");
+
   if (params.note) parts.push(params.note.toLowerCase());
 
   parts.push(params.tone.toLowerCase());
@@ -297,9 +400,9 @@ function buildFallbackQuery(params: {
   else if (params.context === "With company") parts.push("party");
   else parts.push("solo");
 
-  if (params.era !== "Any") parts.push(params.era.toLowerCase());
+  if (params.effectiveEra !== "Any") parts.push(params.effectiveEra.toLowerCase());
 
-  const query = parts.join(" ");
+  const query = parts.join(" ").trim();
   return query || "chill music";
 }
 
@@ -310,6 +413,10 @@ async function getGroqQuery(input: {
   note: string;
   genres: GenreOption[];
   era: EraOption;
+  uaRequested: boolean;
+  americanRequested: boolean;
+  inferredEra: EraOption | null;
+  effectiveEra: EraOption;
 }) {
   if (!GROQ_API_KEY) return null;
 
@@ -328,11 +435,12 @@ async function getGroqQuery(input: {
             content: [
               "You build Spotify search queries for music recommendations.",
               "- The user's note may be in ANY language. Interpret it.",
-              "- Genre selection is the top priority. Do not override it.",
-              "- Ukrainian language/artists are allowed and encouraged ONLY if the user explicitly asks for Ukrainian (e.g. 'ukrainian rap', 'укр реп').",
+              "- Genre selection from the UI is the top priority. Never override it. If no genres are provided, infer a reasonable genre/era from the note.",
+              "- Ukrainian language alone does NOT mean the user wants Ukrainian music. Only prioritize Ukrainian artists/tracks if the explicit Ukrainian request flag is true.",
+              "- If the explicit American/US intent flag is true, favor American/US results and do not bias toward Ukrainian unless the Ukrainian request flag is also true.",
+              "- Detect and use era hints in the note (80s/90s/00s/2010s/2020s) when the era is Any.",
               "- Do NOT produce Russian-language or Russia-related results.",
               "- Use mood level, tone, and context: Alone / In pair / With company.",
-              "- Use preferred genres and era as strong hints.",
               "- Output ONLY a short plain text Spotify query (a few words). No quotes, no explanations.",
             ].join("\n"),
           },
@@ -343,8 +451,12 @@ Mood level: ${input.moodLevel}
 Tone: ${input.tone}
 Context: ${input.context}
 User note: ${input.note || "no extra details"}
+Explicit Ukrainian request: ${input.uaRequested ? "yes" : "no"}
+Explicit American request: ${input.americanRequested ? "yes" : "no"}
 Preferred genres: ${(input.genres || []).join(", ") || "none"}
 Preferred era: ${input.era}
+Era hint from note: ${input.inferredEra || "none"}
+Era to use (after hint): ${input.effectiveEra}
             `.trim(),
           },
         ],
@@ -366,7 +478,11 @@ Preferred era: ${input.era}
     const content = data?.choices?.[0]?.message?.content?.trim();
     if (!content || content.length < 3) return null;
 
-    return content.replace(/["'\n\r]+/g, " ").trim();
+    const cleaned = content.replace(/["'\n\r]+/g, " ").trim();
+    if (!cleaned || cleaned.length < 3) return null;
+    if (isForbiddenGroqQuery(cleaned)) return null;
+
+    return cleaned;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("Groq request failed, using fallback:", msg);
@@ -392,13 +508,20 @@ export async function POST(req: Request) {
     const excludeSet = new Set(excludeTrackIds || []);
     const selectedGenres = genres || [];
 
+    const uaRequested = isExplicitUkrainianRequest(note);
+    const americanRequested = isExplicitAmericanRequest(note);
+    const inferredEra = inferEraFromNote(note);
+    const effectiveEra = era === "Any" && inferredEra ? inferredEra : era;
+
     let query = buildFallbackQuery({
       moodLevel,
       tone,
       context,
       note,
       genres: selectedGenres,
-      era,
+      effectiveEra,
+      uaRequested,
+      americanRequested,
     });
 
     const groqQuery = await getGroqQuery({
@@ -408,6 +531,10 @@ export async function POST(req: Request) {
       note,
       genres: selectedGenres,
       era,
+      uaRequested,
+      americanRequested,
+      inferredEra,
+      effectiveEra,
     });
     if (groqQuery) query = groqQuery;
 
@@ -453,11 +580,11 @@ export async function POST(req: Request) {
     const withEra = items.filter((item) => {
       const dateStr = item?.album?.release_date;
       const year = dateStr ? parseInt(dateStr.slice(0, 4), 10) : null;
-      return matchEra(year, era);
+      return matchEra(year, effectiveEra);
     });
     if (withEra.length) items = withEra;
 
-    const uaWanted = isExplicitUkrainianRequest(note);
+    const uaWanted = uaRequested;
 
     // Rank: GENRE first, then UA only if explicitly requested, then popularity
     const ranked = [...items].sort((a, b) => {
